@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-import db from '@/lib/db';
-import db2 from '@/lib/db/db2';
+import db from '@/lib/db'; // Primera base de datos (usuarios)
+import db2 from '@/lib/db/db2'; // Segunda base de datos (compras)
 
 export async function POST(req: NextRequest) {
   const token = await getToken({ req });
@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Total inválido' }, { status: 400 });
   }
 
+  // Obtener el saldo actual del usuario desde la tabla users
   const result = await db.execute({
     sql: 'SELECT saldo FROM users WHERE id = ?',
     args: [token.id],
@@ -35,11 +36,13 @@ export async function POST(req: NextRequest) {
   const newSaldo = currentSaldo - total;
   console.log('Nuevo saldo:', newSaldo);
 
+  // Actualizar el saldo en la tabla users
   await db.execute({
     sql: 'UPDATE users SET saldo = ? WHERE id = ?',
     args: [newSaldo, token.id],
   });
 
+  // Registrar la compra en la tabla de la segunda base de datos
   try {
     const purchaseResult = await db2.execute({
       sql: `
@@ -60,11 +63,10 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    if (!purchaseResult) {
-      throw new Error('Error al registrar la compra');
-    }
+    // Extraer el ID insertado desde lastInsertRowid (propio de libsql)
+    const purchaseId = Number(purchaseResult.lastInsertRowid);
 
-    return NextResponse.json({ success: true, newSaldo, purchaseId: purchaseResult.insertId });
+    return NextResponse.json({ success: true, newSaldo, purchaseId });
   } catch (error) {
     console.error('Error al registrar la compra:', error);
     return NextResponse.json({ error: 'Error al registrar la compra' }, { status: 500 });
